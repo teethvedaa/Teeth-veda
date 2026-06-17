@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users can read/write their own profile and limit states
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      // Allow demo sandbox entries for preview mode compatibility
+      allow read, write: if userId.startsWith('demo_');
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Teeth Veda",
+  "description": "Ayurvedic chatbot that helps tobacco and smoking habituals whiten teeth, solve bad breath, and quit health-damaging habits with natural remedies.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
