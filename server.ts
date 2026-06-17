@@ -3,6 +3,8 @@ import path from 'path';
 import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
+import Razorpay from 'razorpay';
+import crypto from 'crypto';
 
 // Load environmental parameters
 dotenv.config();
@@ -13,6 +15,24 @@ const PORT = 3000;
 // Increase request payload size limits for image uploads
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ limit: '15mb', extended: true }));
+
+// Lazy initializer for Razorpay Client
+let razorpayClient: any | null = null;
+const getRazorpayClient = () => {
+  if (!razorpayClient) {
+    const keyId = process.env.VITE_RAZORPAY_KEY_ID;
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    if (!keyId || !keySecret) {
+      throw new Error('Razorpay VITE_RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET environment variable is missing.');
+    }
+    // Using standard constructor with dynamic key verification
+    razorpayClient = new Razorpay({
+      key_id: keyId,
+      key_secret: keySecret
+    });
+  }
+  return razorpayClient;
+};
 
 // Initialize Google Gen AI with server-side key
 const getAiClient = () => {
@@ -26,6 +46,103 @@ const getAiClient = () => {
 // Healthcheck endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
+});
+
+// Razorpay config check endpoint
+app.get('/api/razorpay/config', (req, res) => {
+  const hasKeys = !!(process.env.VITE_RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET);
+  res.json({
+    isLive: hasKeys,
+    keyId: process.env.VITE_RAZORPAY_KEY_ID || null
+  });
+});
+
+// Razorpay create order endpoint
+app.post('/api/razorpay/create-order', async (req, res) => {
+  try {
+    const { planId } = req.body;
+    if (!planId || !['basic', 'standard', 'premium'].includes(planId)) {
+      return res.status(400).json({ error: 'Invalid plan selected' });
+    }
+
+    const PLAN_PRICES: Record<string, number> = {
+      basic: 49,
+      standard: 99,
+      premium: 199
+    };
+
+    const priceINR = PLAN_PRICES[planId];
+    if (priceINR === undefined) {
+       return res.status(400).json({ error: 'Plan pricing not configured' });
+    }
+
+    const priceInPaise = priceINR * 100; // Razorpay operates in sub-units (paise for INR)
+
+    try {
+      const rzp = getRazorpayClient();
+      const order = await rzp.orders.create({
+        amount: priceInPaise,
+        currency: 'INR',
+        receipt: `receipt_plan_${planId}_${Date.now().toString().slice(-6)}`,
+      });
+
+      res.json({
+        success: true,
+        orderId: order.id,
+        amount: order.amount,
+        currency: order.currency,
+        keyId: process.env.VITE_RAZORPAY_KEY_ID
+      });
+    } catch (rzpErr: any) {
+      console.error('Razorpay SDK Order Creation Failed:', rzpErr);
+      res.status(512).json({
+        error: 'Razorpay keys are invalid or merchant account not initialized in Live Mode.',
+        details: rzpErr.description || rzpErr.message || rzpErr
+      });
+    }
+  } catch (error: any) {
+    console.error('Create Order Global Error:', error);
+    res.status(500).json({ error: error.message || 'Internal server payment setup error' });
+  }
+});
+
+// Razorpay signature verification endpoint
+app.post('/api/razorpay/verify-payment', async (req, res) => {
+  try {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      return res.status(400).json({ error: 'Missing parameters for payment response signature verification' });
+    }
+
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    if (!keySecret) {
+      return res.status(500).json({ error: 'Razorpay secret key is not configured on this server container.' });
+    }
+
+    const hmacSource = `${razorpay_order_id}|${razorpay_payment_id}`;
+    const generated_signature = crypto
+      .createHmac('sha256', keySecret)
+      .update(hmacSource)
+      .digest('hex');
+
+    if (generated_signature === razorpay_signature) {
+      res.json({
+        success: true,
+        verified: true,
+        message: 'Payment signature verified successfully.'
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        verified: false,
+        message: 'Invalid payment signature security check failed.'
+      });
+    }
+  } catch (error: any) {
+    console.error('Verify Payment error:', error);
+    res.status(500).json({ error: error.message || 'Signature security validation failed.' });
+  }
 });
 
 // Main Chatbot Assistant endpoint

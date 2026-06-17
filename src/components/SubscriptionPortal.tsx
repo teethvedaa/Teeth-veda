@@ -184,8 +184,8 @@ export default function SubscriptionPortal({ onSubscribe, isLoading }: Subscript
               <ShieldCheck className="w-5 h-5" />
             </span>
             <div>
-              <p className="font-semibold text-sm text-slate-900">सुरक्षित भुगतान और तत्काल सक्रियता</p>
-              <p className="text-slate-500 text-xs">Payments processed securely via Razorpay gateway.</p>
+              <p className="font-semibold text-sm text-slate-900">सुरक्षित सिमुलेशन और तत्काल सक्रियता</p>
+              <p className="text-slate-500 text-xs">सक्रिय करने के लिए किसी वास्तविक Razorpay API Key या असली पैसों की आवश्यकता नहीं है। (No real Razorpay API Key or actual payment required.)</p>
             </div>
           </div>
           

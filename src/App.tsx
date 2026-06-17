@@ -143,11 +143,20 @@ export default function App() {
       const result = await signInWithPopup(auth, googleProvider);
       setIsLoginModalOpen(false);
     } catch (err: any) {
-      console.error('Google Auth Failed:', err);
-      // Fallback instruction triggers in cases of Iframe origin blockings
-      setErrorMessage(
-        'Google popup blocked by iframe sandbox restriction. Please use the immediate simulated Demo logging form below to test!'
-      );
+      const isPopupClosed = err?.code === 'auth/popup-closed-by-user' || err?.message?.includes('popup-closed-by-user');
+      
+      if (isPopupClosed) {
+        console.warn('Google Sign-In popup closed by user before completion.');
+        setErrorMessage(
+          'लॉगिन अधूरा रह गया क्योंकि पॉपअप बंद कर दिया गया था। कृपया फिर से कोशिश करें या सीधा डेमो फॉर्म उपयोग करें। (Login was not completed as the window was closed. Please try again or use the instant Demo form below.)'
+        );
+      } else {
+        console.error('Google Auth Failed:', err);
+        // Fallback instruction triggers in cases of Iframe origin blockings
+        setErrorMessage(
+          'Google popup blocked by iframe sandbox restriction. Please use the immediate simulated Demo logging form below to test!'
+        );
+      }
     } finally {
       setIsActionLoading(false);
     }
@@ -419,7 +428,11 @@ export default function App() {
                 repeat: Infinity,
                 ease: "easeInOut"
               }}
-              className="w-full py-3 px-4 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-full text-sm transition-all flex items-center justify-center gap-2.5 active:scale-95 disabled:bg-teal-300 cursor-pointer"
+              className={`w-full py-3 px-4 text-white font-bold rounded-full text-sm transition-all flex items-center justify-center gap-2.5 cursor-pointer ${
+                isActionLoading
+                  ? 'bg-teal-500/85 animate-pulse cursor-not-allowed shadow-none'
+                  : 'bg-teal-600 hover:bg-teal-700 active:scale-95 disabled:bg-teal-300'
+              }`}
             >
               {isActionLoading ? (
                 <>
@@ -486,13 +499,14 @@ export default function App() {
         </div>
       )}
 
-      {/* Payment checkout simulation */}
+       {/* Payment checkout simulation */}
       {isCheckoutOpen && pendingPlanId && (
         <CheckoutModal
           isOpen={isCheckoutOpen}
           planId={pendingPlanId}
           price={PLAN_PRESETS[pendingPlanId].price}
           planName={PLAN_PRESETS[pendingPlanId].planName}
+          userEmail={currentUser?.email || undefined}
           onClose={() => {
             setIsCheckoutOpen(false);
             setPendingPlanId(null);
